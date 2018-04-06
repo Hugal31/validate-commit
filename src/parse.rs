@@ -16,6 +16,12 @@ pub fn parse_commit_message(message: &str) -> Result<CommitMsg> {
 }
 
 fn parse_commit_header(line: &str) -> Result<CommitHeader> {
+    let line = if line.starts_with("fixup! ") || line.starts_with("squash! ") {
+        &line[line.find(' ').unwrap() + 1..]
+    } else {
+        line
+    };
+
     let column_pos = line.find(':').ok_or("first line must contain a column")?;
     let (commit_type, scope) = parse_commit_type_and_scope(&line[0..column_pos])?;
     let commit_type = commit_type.parse()?;
