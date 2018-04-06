@@ -80,6 +80,10 @@ pub fn validate_commit_file(path: &str) -> Result<()> {
 }
 
 pub fn validate_commit_message(input: &str) -> Result<()> {
+    if input.starts_with("Merge ") || input.starts_with("WIP") {
+        return Ok(())
+    }
+
     let message = parse_commit_message(input)?;
 
     for (idx, line) in input.lines().enumerate() {
@@ -141,5 +145,11 @@ mod tests {
     #[test]
     fn discard_too_long_lines() {
         assert!(validate_commit_message("feat: add commit message validation an other sweet features so this commit contains way too much things").is_err());
+    }
+
+    #[test]
+    fn ignore_wip_and_merge_message() {
+        assert!(validate_commit_message("Merge branch develop").is_ok());
+        assert!(validate_commit_message("WIP: feat: add feature").is_ok());
     }
 }
