@@ -4,9 +4,14 @@ use errors::*;
 use {CommitHeader, CommitMsg};
 
 pub fn parse_commit_message(message: &str) -> Result<CommitMsg> {
-    let mut lines = message.lines();
+    let lines: Vec<_> = message.lines().collect();
+
+    if lines.get(1).map_or(false, |l| !l.is_empty()) {
+        return Err("second line must be empty".into());
+    }
+
     Ok(CommitMsg {
-        header: parse_commit_header(lines.next().unwrap())?,
+        header: parse_commit_header(lines[0])?,
     })
 }
 
@@ -103,5 +108,22 @@ mod tests {
     fn discard_not_trimmed_subject() {
         assert!(parse_commit_message("feat: add commit message validation ").is_err());
         assert!(parse_commit_message("feat:  add commit message validation").is_err());
+    }
+
+    #[test]
+    fn test_second_line_empty() {
+        assert!(
+            parse_commit_message(
+                "feat: add commit message validation
+- Validate commit type
+- Validate subject"
+            ).is_err()
+        );
+    }
+
+    #[test]
+    fn test_fixup_or_squash() {
+        assert!(parse_commit_message("fixup! feat: add commit message validation").is_ok());
+        assert!(parse_commit_message("squash! feat: add commit message validation").is_ok());
     }
 }
