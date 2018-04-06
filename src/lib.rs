@@ -83,8 +83,16 @@ pub fn validate_commit_file(path: &str) -> Result<()> {
     validate_commit_message(&message)
 }
 
-pub fn validate_commit_message(message: &str) -> Result<()> {
-    let message = parse_commit_message(message)?;
+pub fn validate_commit_message(input: &str) -> Result<()> {
+    let message = parse_commit_message(input)?;
+
+    for (idx, line) in input.lines().enumerate() {
+        if line.len() > 100 {
+            return Err(ErrorKind::FormatError("lines must not be longuer than 100 characters".to_string(),
+                                              idx + 1,
+                                              100).into());
+        }
+    }
 
     // Check if the first letter is not capitalized
     if message.header.subject.chars().next().unwrap().is_uppercase() {
@@ -123,5 +131,10 @@ mod tests {
     #[test]
     fn discard_capitalized_subject() {
         assert!(validate_commit_message("feat: Add commit message validation").is_err());
+    }
+
+    #[test]
+    fn discard_too_long_lines() {
+        assert!(validate_commit_message("feat: add commit message validation an other sweet features so this commit contains way too much things").is_err());
     }
 }
