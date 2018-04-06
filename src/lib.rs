@@ -1,10 +1,15 @@
 #[macro_use]
 extern crate error_chain;
 
+mod parse;
+
 use std::{
     fs::File,
     io::Read,
+    str::FromStr,
 };
+
+use parse::parse_commit_message;
 
 pub use errors::*;
 
@@ -27,6 +32,50 @@ pub mod errors {
     }
 }
 
+#[derive(Debug, PartialEq)]
+pub struct CommitMsg<'a> {
+    pub header: CommitHeader<'a>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct CommitHeader<'a> {
+    pub commit_type: CommitType,
+    pub scope: Option<&'a str>,
+    pub subject: &'a str,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum CommitType {
+    Feat,
+    Fix,
+    Docs,
+    Style,
+    Refactor,
+    Perf,
+    Test,
+    Chore,
+}
+
+impl FromStr for CommitType {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        use CommitType::*;
+
+        match s {
+            "feat" => Ok(Feat),
+            "fix" => Ok(Fix),
+            "docs" => Ok(Docs),
+            "style" => Ok(Style),
+            "refactor" => Ok(Refactor),
+            "perf" => Ok(Perf),
+            "test" => Ok(Test),
+            "chore" => Ok(Chore),
+            _       => Err(ErrorKind::CommitTypeError(s.to_string()).into()),
+        }
+    }
+}
+
 pub fn validate_commit_file(path: &str) -> Result<()> {
     let mut file = File::open(path)?;
     let mut message = String::with_capacity(64);
@@ -35,57 +84,11 @@ pub fn validate_commit_file(path: &str) -> Result<()> {
 }
 
 pub fn validate_commit_message(message: &str) -> Result<()> {
-    let mut lines = message.lines();
-
-    let first_line = lines.next().unwrap();
-    validate_first_line(first_line)
-}
-
-const COMMIT_TYPES: [&str; 8] = [
-    "feat",
-    "fix",
-    "docs",
-    "style",
-    "refactor",
-    "perf",
-    "test",
-    "chore",
-];
-
-fn validate_first_line(line: &str) -> Result<()> {
-    let column_pos = line.find(':').ok_or("first line must contain a column")?;
-    let commit_type = &line[0..column_pos];
-
-    // Check the commit type
-    if !COMMIT_TYPES.contains(&commit_type) {
-        return Err(ErrorKind::CommitTypeError(commit_type.to_string()).into());
-    }
-
-    // Check if the column is followed by a space
-    match line.get(column_pos + 1..column_pos + 2) {
-        Some(" ") => (),
-        _         => return Err(ErrorKind::FormatError("the column must be followed by a space".to_string(),
-                                                       1,
-                                                       column_pos + 1).into()),
-    }
-
-    // Check if the commit message is not empty
-    let subject_pos = column_pos + 2;
-    let subject = &line[subject_pos..];
-    if subject.is_empty() {
-        return Err("empty commit subject".into());
-    }
-
-    // Check if the subject is trimmed
-    if subject != subject.trim() {
-        return Err("subject is not trimmed".into());
-    }
+    let message = parse_commit_message(message)?;
 
     // Check if the first letter is not capitalized
-    if subject.chars().next().unwrap().is_uppercase() {
-        return Err(ErrorKind::FormatError("first letter of subject must not be capitalized".to_string(),
-                                          1,
-                                          subject_pos).into());
+    if message.header.subject.chars().next().unwrap().is_uppercase() {
+        return Err("first letter of subject must not be capitalized".into());
     }
 
     Ok(())
@@ -120,11 +123,5 @@ mod tests {
     #[test]
     fn discard_capitalized_subject() {
         assert!(validate_commit_message("feat: Add commit message validation").is_err());
-    }
-
-    #[test]
-    fn discard_not_trimmed_subject() {
-        assert!(validate_commit_message("feat: add commit message validation ").is_err());
-        assert!(validate_commit_message("feat:  add commit message validation").is_err());
     }
 }
