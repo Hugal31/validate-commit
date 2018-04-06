@@ -3,11 +3,7 @@ extern crate error_chain;
 
 mod parse;
 
-use std::{
-    fs::File,
-    io::Read,
-    str::FromStr,
-};
+use std::{fs::File, io::Read, str::FromStr};
 
 use parse::parse_commit_message;
 
@@ -71,7 +67,7 @@ impl FromStr for CommitType {
             "perf" => Ok(Perf),
             "test" => Ok(Test),
             "chore" => Ok(Chore),
-            _       => Err(ErrorKind::CommitTypeError(s.to_string()).into()),
+            _ => Err(ErrorKind::CommitTypeError(s.to_string()).into()),
         }
     }
 }
@@ -88,14 +84,23 @@ pub fn validate_commit_message(input: &str) -> Result<()> {
 
     for (idx, line) in input.lines().enumerate() {
         if line.len() > 100 {
-            return Err(ErrorKind::FormatError("lines must not be longuer than 100 characters".to_string(),
-                                              idx + 1,
-                                              100).into());
+            return Err(ErrorKind::FormatError(
+                "lines must not be longuer than 100 characters".to_string(),
+                idx + 1,
+                100,
+            ).into());
         }
     }
 
     // Check if the first letter is not capitalized
-    if message.header.subject.chars().next().unwrap().is_uppercase() {
+    if message
+        .header
+        .subject
+        .chars()
+        .next()
+        .unwrap()
+        .is_uppercase()
+    {
         return Err("first letter of subject must not be capitalized".into());
     }
 

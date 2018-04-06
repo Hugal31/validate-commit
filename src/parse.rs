@@ -5,7 +5,7 @@ use {CommitHeader, CommitMsg};
 
 pub fn parse_commit_message(message: &str) -> Result<CommitMsg> {
     let mut lines = message.lines();
-    Ok(CommitMsg{
+    Ok(CommitMsg {
         header: parse_commit_header(lines.next().unwrap())?,
     })
 }
@@ -17,9 +17,13 @@ fn parse_commit_header(line: &str) -> Result<CommitHeader> {
 
     match line.get(column_pos + 1..column_pos + 2) {
         Some(" ") => (),
-        _         => return Err(ErrorKind::FormatError("the column must be followed by a space".to_string(),
-                                                       1,
-                                                       column_pos + 1).into()),
+        _ => {
+            return Err(ErrorKind::FormatError(
+                "the column must be followed by a space".to_string(),
+                1,
+                column_pos + 1,
+            ).into())
+        }
     }
 
     let subject_pos = column_pos + 2;
@@ -33,7 +37,7 @@ fn parse_commit_header(line: &str) -> Result<CommitHeader> {
         return Err("subject is not trimmed".into());
     }
 
-    Ok(CommitHeader{
+    Ok(CommitHeader {
         commit_type,
         scope,
         subject,
@@ -52,14 +56,21 @@ fn parse_commit_type_and_scope(commit_type_and_scope: &str) -> Result<(&str, Opt
 
     let last_char = commit_type_and_scope.chars().last().unwrap();
     if last_char.is_whitespace() {
-        return Err(ErrorKind::FormatError("misplaced whitespace".to_string(), 1, commit_type_and_scope.len() - 1).into());
+        return Err(ErrorKind::FormatError(
+            "misplaced whitespace".to_string(),
+            1,
+            commit_type_and_scope.len() - 1,
+        ).into());
     }
 
     Ok(if last_char == ')' {
-        let opening_parenthesis = commit_type_and_scope.find('(')
+        let opening_parenthesis = commit_type_and_scope
+            .find('(')
             .ok_or("missing opening brace in header")?;
-        (&commit_type_and_scope[..opening_parenthesis],
-         Some(&commit_type_and_scope[opening_parenthesis + 1..commit_type_and_scope.len() - 1]))
+        (
+            &commit_type_and_scope[..opening_parenthesis],
+            Some(&commit_type_and_scope[opening_parenthesis + 1..commit_type_and_scope.len() - 1]),
+        )
     } else {
         (commit_type_and_scope, None)
     })
@@ -67,8 +78,8 @@ fn parse_commit_type_and_scope(commit_type_and_scope: &str) -> Result<(&str, Opt
 
 #[cfg(test)]
 mod tests {
-    use CommitType;
     use super::parse_commit_message;
+    use CommitType;
 
     #[test]
     fn test_parse_header() {
