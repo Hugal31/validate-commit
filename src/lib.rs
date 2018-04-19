@@ -52,6 +52,16 @@ pub enum CommitType {
     Chore,
 }
 
+fn pretty_display_format_error(error: Error, line: &str) -> Error {
+    match error.0 {
+        ErrorKind::FormatError(ref message, line_nb, pos) => format!(
+            "line {1}: {2}\n{3}\n{4: >0$}",
+            pos, line_nb, message, line, '^'
+        ).into(),
+        _ => error,
+    }
+}
+
 impl FromStr for CommitType {
     type Err = Error;
 
@@ -81,18 +91,22 @@ pub fn validate_commit_file(path: &str) -> Result<()> {
 
 pub fn validate_commit_message(input: &str) -> Result<()> {
     if input.starts_with("Merge ") || input.starts_with("WIP") {
-        return Ok(())
+        return Ok(());
     }
 
-    let message = parse_commit_message(input)?;
+    let message = parse_commit_message(input)
+        .map_err(|e| pretty_display_format_error(e, input.lines().next().unwrap()))?;
 
     for (idx, line) in input.lines().enumerate() {
         if line.len() > 100 {
-            return Err(ErrorKind::FormatError(
-                "lines must not be longuer than 100 characters".to_string(),
-                idx + 1,
-                100,
-            ).into());
+            return Err(pretty_display_format_error(
+                ErrorKind::FormatError(
+                    "lines must not be longuer than 100 characters".to_string(),
+                    idx + 1,
+                    100,
+                ).into(),
+                line,
+            ));
         }
     }
 
