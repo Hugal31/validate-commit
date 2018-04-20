@@ -52,16 +52,6 @@ pub enum CommitType {
     Chore,
 }
 
-fn pretty_display_format_error(error: Error, line: &str) -> Error {
-    match error.0 {
-        ErrorKind::FormatError(ref message, line_nb, pos) => format!(
-            "line {1}: {2}\n{3}\n{4: >0$}",
-            pos, line_nb, message, line, '^'
-        ).into(),
-        _ => error,
-    }
-}
-
 impl FromStr for CommitType {
     type Err = Error;
 
@@ -94,18 +84,19 @@ pub fn validate_commit_message(input: &str) -> Result<()> {
         return Ok(());
     }
 
-    let message = parse_commit_message(input)
-        .map_err(|e| pretty_display_format_error(e, input.lines().next().unwrap()))?;
+    let lines: Vec<_> = input.lines().collect();
 
-    for (idx, line) in input.lines().enumerate() {
+    let message = parse_commit_message(input).map_err(|e| prettify_format_error(e, &lines))?;
+
+    for (idx, line) in lines.iter().enumerate() {
         if line.len() > 100 {
-            return Err(pretty_display_format_error(
+            return Err(prettify_format_error(
                 ErrorKind::FormatError(
                     "lines must not be longuer than 100 characters".to_string(),
-                    idx + 1,
+                    idx,
                     100,
                 ).into(),
-                line,
+                &lines,
             ));
         }
     }
@@ -123,6 +114,16 @@ pub fn validate_commit_message(input: &str) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn prettify_format_error(error: Error, lines: &[&str]) -> Error {
+    match error.0 {
+        ErrorKind::FormatError(ref message, line_nb, pos) => format!(
+            "line {1}: {2}\n{3}\n{4: >0$}",
+            pos, line_nb, message, lines[line_nb], '^'
+        ).into(),
+        _ => error,
+    }
 }
 
 #[cfg(test)]

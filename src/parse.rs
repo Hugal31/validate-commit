@@ -31,7 +31,7 @@ fn parse_commit_header(line: &str) -> Result<CommitHeader> {
         _ => {
             return Err(ErrorKind::FormatError(
                 "the column must be followed by a space".to_string(),
-                1,
+                0,
                 column_pos + 1,
             ).into())
         }
@@ -69,7 +69,7 @@ fn parse_commit_type_and_scope(commit_type_and_scope: &str) -> Result<(&str, Opt
     if last_char.is_whitespace() {
         return Err(ErrorKind::FormatError(
             "misplaced whitespace".to_string(),
-            1,
+            0,
             commit_type_and_scope.len() - 1,
         ).into());
     }
