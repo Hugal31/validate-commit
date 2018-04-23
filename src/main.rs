@@ -19,7 +19,7 @@ fn main() {
     }
 }
 
-fn write_error(error: &validate_commit::Error) {
+fn write_error(error: &validate_commit::CommitValidationError) {
     let formatted_error = format!("{}", error);
     let mut stdout = StandardStream::stdout(ColorChoice::Auto);
     stdout

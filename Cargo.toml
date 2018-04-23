@@ -5,5 +5,5 @@ authors = ["Hugo Laloge <hugo.laloge@gmail.com>"]
 license = "GPL-3.0-only"
 
 [dependencies]
-error-chain = { version = "0.11", features = [] }
+failure = "^0.1"
 termcolor = "0.3"

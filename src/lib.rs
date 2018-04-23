@@ -1,5 +1,5 @@
 #[macro_use]
-extern crate error_chain;
+extern crate failure;
 
 mod parse;
 
@@ -10,20 +10,83 @@ use parse::parse_commit_message;
 pub use errors::*;
 
 pub mod errors {
-    error_chain! {
-        errors {
-            CommitTypeError(t: String) {
-                description("invalid commit type")
-                display("invalid commit type '{}'", t)
-            }
-            FormatError(message: String, line: usize, pos: usize) {
-                description("format error")
-                display("{} at line {} pos {}", message, line, pos)
+    use std::{io, fmt, result};
+
+    pub type Result<T> = result::Result<T, CommitValidationError>;
+
+    #[derive(Debug, Fail)]
+    pub enum CommitValidationError {
+        #[fail(display = "{}", _0)]
+        Format(#[cause] FormatError),
+        #[fail(display = "{}", _0)]
+        FormatContext(#[cause] FormatErrorContext),
+        #[fail(display = "{}", _0)]
+        Io(#[cause] io::Error)
+    }
+
+    impl From<io::Error> for CommitValidationError {
+        fn from(error: io::Error) -> Self {
+            CommitValidationError::Io(error)
+        }
+    }
+
+    impl From<FormatError> for CommitValidationError {
+        fn from(error: FormatError) -> Self {
+            CommitValidationError::Format(error)
+        }
+    }
+
+    impl From<FormatErrorContext> for CommitValidationError {
+        fn from(error: FormatErrorContext) -> Self {
+            CommitValidationError::FormatContext(error)
+        }
+    }
+
+    #[derive(Copy, Clone, Eq, PartialEq, Debug, Fail)]
+    pub enum FormatError {
+        #[fail(display = "First letter must no be capitalized")]
+        CapitalizedFirstLetter,
+        #[fail(display = "Empty commit subject")]
+        EmptyCommitSubject,
+        #[fail(display = "Empty commit type")]
+        EmptyCommitType,
+        #[fail(display = "Invalid commit type")]
+        InvalidCommitType,
+        #[fail(display = "Line must not be longer than {} characters", _0)]
+        LineTooLong(usize),
+        #[fail(display = "Missing parenthesis")]
+        MissingParenthesis,
+        #[fail(display = "Misplaced whitespace")]
+        MisplacedWhitespace,
+        #[fail(display = "First line must contain a column")]
+        NoColumn,
+        #[fail(display = "Second line must be empty")]
+        NonEmptySecondLine,
+    }
+
+    impl FormatError {
+        pub fn with_format_context(self, line: &str, line_nb: usize, pos: usize) -> FormatErrorContext {
+            FormatErrorContext{
+                error: self,
+                line: line.to_string(),
+                line_nb,
+                pos
             }
         }
+    }
 
-        foreign_links {
-            Io(::std::io::Error);
+    #[derive(Debug, Fail)]
+    pub struct FormatErrorContext {
+        #[cause]
+        pub error: FormatError,
+        pub line: String,
+        pub line_nb: usize,
+        pub pos: usize,
+    }
+
+    impl fmt::Display for FormatErrorContext {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "line {}: {}\n{}\n{: >4$}", self.line_nb, self.error, self.line, '^', self.pos)
         }
     }
 }
@@ -52,10 +115,27 @@ pub enum CommitType {
     Chore,
 }
 
-impl FromStr for CommitType {
-    type Err = Error;
+impl From<CommitType> for &'static str {
+    fn from(t: CommitType) -> Self {
+        use CommitType::*;
 
-    fn from_str(s: &str) -> Result<Self> {
+        match t {
+            Feat => "feat",
+            Fix => "fix",
+            Docs => "docx",
+            Style => "style",
+            Refactor => "refactor",
+            Perf => "perf",
+            Test => "test",
+            Chore => "chore",
+        }
+    }
+}
+
+impl FromStr for CommitType {
+    type Err = FormatError;
+
+    fn from_str(s: &str) -> ::std::result::Result<Self, Self::Err> {
         use CommitType::*;
 
         match s {
@@ -67,7 +147,7 @@ impl FromStr for CommitType {
             "perf" => Ok(Perf),
             "test" => Ok(Test),
             "chore" => Ok(Chore),
-            _ => Err(ErrorKind::CommitTypeError(s.to_string()).into()),
+            _ => Err(FormatError::InvalidCommitType),
         }
     }
 }
@@ -86,18 +166,11 @@ pub fn validate_commit_message(input: &str) -> Result<()> {
 
     let lines: Vec<_> = input.lines().collect();
 
-    let message = parse_commit_message(input).map_err(|e| prettify_format_error(e, &lines))?;
+    let message = parse_commit_message(input)?;
 
     for (idx, line) in lines.iter().enumerate() {
         if line.len() > 100 {
-            return Err(prettify_format_error(
-                ErrorKind::FormatError(
-                    "lines must not be longuer than 100 characters".to_string(),
-                    idx,
-                    100,
-                ).into(),
-                &lines,
-            ));
+            return Err(FormatError::LineTooLong(100).with_format_context(line, idx, 100).into());
         }
     }
 
@@ -110,20 +183,12 @@ pub fn validate_commit_message(input: &str) -> Result<()> {
         .unwrap()
         .is_uppercase()
     {
-        return Err("first letter of subject must not be capitalized".into());
+        return Err(FormatError::CapitalizedFirstLetter.with_format_context(lines[0], 0, Into::<&'static str>::into(message.header.commit_type).len()
+            + message.header.scope.map_or(0, |s| s.len() + 2)
+            + 2).into());
     }
 
     Ok(())
-}
-
-fn prettify_format_error(error: Error, lines: &[&str]) -> Error {
-    match error.0 {
-        ErrorKind::FormatError(ref message, line_nb, pos) => format!(
-            "line {1}: {2}\n{3}\n{4: >0$}",
-            pos, line_nb, message, lines[line_nb], '^'
-        ).into(),
-        _ => error,
-    }
 }
 
 #[cfg(test)]
