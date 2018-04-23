@@ -5,7 +5,7 @@ mod parse;
 
 use std::{fs::File, io::Read, str::FromStr};
 
-use failure::Fail;
+use failure::{Fail, ResultExt};
 
 use parse::parse_commit_message;
 
@@ -13,7 +13,7 @@ pub use errors::*;
 
 pub mod errors {
     use failure::{Context, Fail};
-    use std::{fmt, io, result};
+    use std::{fmt, result};
 
     pub type Result<T> = result::Result<T, CommitValidationError>;
 
@@ -21,7 +21,7 @@ pub mod errors {
     pub enum CommitValidationError {
         Format(#[cause] FormatError),
         FormatContext(#[cause] Context<FormatErrorContext>),
-        Io(#[cause] io::Error),
+        Io(#[cause] Context<IOErrorKind>),
     }
 
     impl fmt::Display for CommitValidationError {
@@ -41,8 +41,8 @@ pub mod errors {
         }
     }
 
-    impl From<io::Error> for CommitValidationError {
-        fn from(error: io::Error) -> Self {
+    impl From<Context<IOErrorKind>> for CommitValidationError {
+        fn from(error: Context<IOErrorKind>) -> Self {
             CommitValidationError::Io(error)
         }
     }
@@ -57,6 +57,14 @@ pub mod errors {
         fn from(error: Context<FormatErrorContext>) -> Self {
             CommitValidationError::FormatContext(error)
         }
+    }
+
+    #[derive(Copy, Clone, Eq, PartialEq, Debug, Fail)]
+    pub enum IOErrorKind {
+        #[fail(display = "Error while opening commit file")]
+        OpenFileError,
+        #[fail(display = "Error while reading commit file")]
+        ReadFileError,
     }
 
     #[derive(Copy, Clone, Eq, PartialEq, Debug, Fail)]
@@ -165,9 +173,10 @@ impl FromStr for CommitType {
 }
 
 pub fn validate_commit_file(path: &str) -> Result<()> {
-    let mut file = File::open(path)?;
+    let mut file = File::open(path).context(IOErrorKind::OpenFileError)?;
     let mut message = String::with_capacity(64);
-    file.read_to_string(&mut message)?;
+    file.read_to_string(&mut message)
+        .context(IOErrorKind::ReadFileError)?;
     validate_commit_message(&message)
 }
 
