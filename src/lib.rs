@@ -19,43 +19,42 @@ pub mod errors {
 
     #[derive(Debug, Fail)]
     pub enum CommitValidationError {
-        Format(#[cause] FormatError),
-        FormatContext(#[cause] Context<FormatErrorContext>),
-        Io(#[cause] Context<IOErrorKind>),
+        FormatError(#[cause] Context<FormatErrorKind>),
+        IoError(#[cause] Context<IOErrorKind>),
     }
 
     impl fmt::Display for CommitValidationError {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             use CommitValidationError::*;
+
             match self {
-                Format(e) => e.fmt(f),
-                FormatContext(c) => {
+                FormatError(c) => {
                     if let Some(cause) = c.cause() {
-                        write!(f, "{}\n{}", cause, c)
+                        write!(f, "{}\n{}", c, cause)
                     } else {
                         c.fmt(f)
                     }
                 }
-                Io(e) => e.fmt(f),
+                IoError(c) => c.fmt(f),
             }
+        }
+    }
+
+    impl From<FormatErrorKind> for CommitValidationError {
+        fn from(error: FormatErrorKind) -> Self {
+            CommitValidationError::FormatError(Context::new(error))
+        }
+    }
+
+    impl From<Context<FormatErrorKind>> for CommitValidationError {
+        fn from(error: Context<FormatErrorKind>) -> Self {
+            CommitValidationError::FormatError(error)
         }
     }
 
     impl From<Context<IOErrorKind>> for CommitValidationError {
         fn from(error: Context<IOErrorKind>) -> Self {
-            CommitValidationError::Io(error)
-        }
-    }
-
-    impl From<FormatError> for CommitValidationError {
-        fn from(error: FormatError) -> Self {
-            CommitValidationError::Format(error)
-        }
-    }
-
-    impl From<Context<FormatErrorContext>> for CommitValidationError {
-        fn from(error: Context<FormatErrorContext>) -> Self {
-            CommitValidationError::FormatContext(error)
+            CommitValidationError::IoError(error)
         }
     }
 
@@ -68,7 +67,7 @@ pub mod errors {
     }
 
     #[derive(Copy, Clone, Eq, PartialEq, Debug, Fail)]
-    pub enum FormatError {
+    pub enum FormatErrorKind {
         #[fail(display = "First letter must not be capitalized")]
         CapitalizedFirstLetter,
         #[fail(display = "Empty commit subject")]
@@ -89,22 +88,22 @@ pub mod errors {
         NonEmptySecondLine,
     }
 
-    #[derive(Debug)]
-    pub struct FormatErrorContext {
+    #[derive(Fail, Debug)]
+    pub struct FormatError {
         line: String,
         pos: usize,
     }
 
-    impl FormatErrorContext {
-        pub fn new(line: &str, pos: usize) -> FormatErrorContext {
-            FormatErrorContext {
+    impl FormatError {
+        pub fn new(line: &str, pos: usize) -> FormatError {
+            FormatError {
                 line: line.to_owned(),
                 pos,
             }
         }
     }
 
-    impl fmt::Display for FormatErrorContext {
+    impl fmt::Display for FormatError {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             write!(f, "{}\n{: >2$}", self.line, '^', self.pos)
         }
@@ -153,7 +152,7 @@ impl From<CommitType> for &'static str {
 }
 
 impl FromStr for CommitType {
-    type Err = FormatError;
+    type Err = FormatErrorKind;
 
     fn from_str(s: &str) -> ::std::result::Result<Self, Self::Err> {
         use CommitType::*;
@@ -167,7 +166,7 @@ impl FromStr for CommitType {
             "perf" => Ok(Perf),
             "test" => Ok(Test),
             "chore" => Ok(Chore),
-            _ => Err(FormatError::InvalidCommitType),
+            _ => Err(FormatErrorKind::InvalidCommitType),
         }
     }
 }
@@ -191,8 +190,8 @@ pub fn validate_commit_message(input: &str) -> Result<()> {
 
     for line in &lines {
         if line.len() > 100 {
-            return Err(FormatError::LineTooLong(100)
-                .context(FormatErrorContext::new(line, 100))
+            return Err(FormatError::new(line, 100)
+                .context(FormatErrorKind::LineTooLong(100))
                 .into());
         }
     }
@@ -208,8 +207,8 @@ pub fn validate_commit_message(input: &str) -> Result<()> {
     {
         let pos = Into::<&'static str>::into(message.header.commit_type).len()
             + message.header.scope.map_or(0, |s| s.len() + 2) + 3;
-        return Err(FormatError::CapitalizedFirstLetter
-            .context(FormatErrorContext::new(lines[0], pos))
+        return Err(FormatError::new(lines[0], pos)
+            .context(FormatErrorKind::CapitalizedFirstLetter)
             .into());
     }
 
