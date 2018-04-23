@@ -3,112 +3,15 @@ extern crate failure;
 
 mod parse;
 
+pub mod errors;
+
 use std::{fs::File, io::Read, str::FromStr};
 
-use failure::{Fail, ResultExt};
+use failure::ResultExt;
 
 use parse::parse_commit_message;
 
 pub use errors::*;
-
-pub mod errors {
-    use failure::{Context, Fail};
-    use std::{fmt, result};
-
-    pub type Result<T> = result::Result<T, CommitValidationError>;
-
-    #[derive(Debug, Fail)]
-    pub enum CommitValidationError {
-        FormatError(#[cause] Context<FormatErrorKind>),
-        IoError(#[cause] Context<IOErrorKind>),
-    }
-
-    impl fmt::Display for CommitValidationError {
-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            use CommitValidationError::*;
-
-            match self {
-                FormatError(c) => {
-                    if let Some(cause) = c.cause() {
-                        write!(f, "{}\n{}", c, cause)
-                    } else {
-                        c.fmt(f)
-                    }
-                }
-                IoError(c) => c.fmt(f),
-            }
-        }
-    }
-
-    impl From<FormatErrorKind> for CommitValidationError {
-        fn from(error: FormatErrorKind) -> Self {
-            CommitValidationError::FormatError(Context::new(error))
-        }
-    }
-
-    impl From<Context<FormatErrorKind>> for CommitValidationError {
-        fn from(error: Context<FormatErrorKind>) -> Self {
-            CommitValidationError::FormatError(error)
-        }
-    }
-
-    impl From<Context<IOErrorKind>> for CommitValidationError {
-        fn from(error: Context<IOErrorKind>) -> Self {
-            CommitValidationError::IoError(error)
-        }
-    }
-
-    #[derive(Copy, Clone, Eq, PartialEq, Debug, Fail)]
-    pub enum IOErrorKind {
-        #[fail(display = "Error while opening commit file")]
-        OpenFileError,
-        #[fail(display = "Error while reading commit file")]
-        ReadFileError,
-    }
-
-    #[derive(Copy, Clone, Eq, PartialEq, Debug, Fail)]
-    pub enum FormatErrorKind {
-        #[fail(display = "First letter must not be capitalized")]
-        CapitalizedFirstLetter,
-        #[fail(display = "Empty commit subject")]
-        EmptyCommitSubject,
-        #[fail(display = "Empty commit type")]
-        EmptyCommitType,
-        #[fail(display = "Invalid commit type")]
-        InvalidCommitType,
-        #[fail(display = "Line must not be longer than {} characters", _0)]
-        LineTooLong(usize),
-        #[fail(display = "Missing parenthesis")]
-        MissingParenthesis,
-        #[fail(display = "Misplaced whitespace")]
-        MisplacedWhitespace,
-        #[fail(display = "First line must contain a column")]
-        NoColumn,
-        #[fail(display = "Second line must be empty")]
-        NonEmptySecondLine,
-    }
-
-    #[derive(Fail, Debug)]
-    pub struct FormatError {
-        line: String,
-        pos: usize,
-    }
-
-    impl FormatError {
-        pub fn new(line: &str, pos: usize) -> FormatError {
-            FormatError {
-                line: line.to_owned(),
-                pos,
-            }
-        }
-    }
-
-    impl fmt::Display for FormatError {
-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            write!(f, "{}\n{: >2$}", self.line, '^', self.pos)
-        }
-    }
-}
 
 #[derive(Debug, PartialEq)]
 pub struct CommitMsg<'a> {
@@ -152,7 +55,7 @@ impl From<CommitType> for &'static str {
 }
 
 impl FromStr for CommitType {
-    type Err = FormatErrorKind;
+    type Err = FormatError;
 
     fn from_str(s: &str) -> ::std::result::Result<Self, Self::Err> {
         use CommitType::*;
@@ -166,20 +69,25 @@ impl FromStr for CommitType {
             "perf" => Ok(Perf),
             "test" => Ok(Test),
             "chore" => Ok(Chore),
-            _ => Err(FormatErrorKind::InvalidCommitType),
+            _ => Err(FormatErrorKind::InvalidCommitType.into()),
         }
     }
 }
 
-pub fn validate_commit_file(path: &str) -> Result<()> {
+pub fn validate_commit_file(path: &str) -> Result<(), CommitValidationError> {
+    let message = read_commit_file(path)?;
+    validate_commit_message(&message).map_err(|e| e.into())
+}
+
+fn read_commit_file(path: &str) -> Result<String, IOError> {
     let mut file = File::open(path).context(IOErrorKind::OpenFileError)?;
     let mut message = String::with_capacity(64);
     file.read_to_string(&mut message)
         .context(IOErrorKind::ReadFileError)?;
-    validate_commit_message(&message)
+    Ok(message)
 }
 
-pub fn validate_commit_message(input: &str) -> Result<()> {
+pub fn validate_commit_message(input: &str) -> Result<(), FormatError> {
     if input.starts_with("Merge ") || input.starts_with("WIP") {
         return Ok(());
     }
@@ -190,9 +98,7 @@ pub fn validate_commit_message(input: &str) -> Result<()> {
 
     for line in &lines {
         if line.len() > 100 {
-            return Err(FormatError::new(line, 100)
-                .context(FormatErrorKind::LineTooLong(100))
-                .into());
+            return Err(FormatErrorKind::LineTooLong(100).at(line, 100));
         }
     }
 
@@ -207,9 +113,7 @@ pub fn validate_commit_message(input: &str) -> Result<()> {
     {
         let pos = Into::<&'static str>::into(message.header.commit_type).len()
             + message.header.scope.map_or(0, |s| s.len() + 2) + 3;
-        return Err(FormatError::new(lines[0], pos)
-            .context(FormatErrorKind::CapitalizedFirstLetter)
-            .into());
+        return Err(FormatErrorKind::CapitalizedFirstLetter.at(lines[0], pos));
     }
 
     Ok(())
