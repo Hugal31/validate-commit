@@ -5,23 +5,40 @@ mod parse;
 
 use std::{fs::File, io::Read, str::FromStr};
 
+use failure::Fail;
+
 use parse::parse_commit_message;
 
 pub use errors::*;
 
 pub mod errors {
-    use std::{io, fmt, result};
+    use failure::{Context, Fail};
+    use std::{fmt, io, result};
 
     pub type Result<T> = result::Result<T, CommitValidationError>;
 
     #[derive(Debug, Fail)]
     pub enum CommitValidationError {
-        #[fail(display = "{}", _0)]
         Format(#[cause] FormatError),
-        #[fail(display = "{}", _0)]
-        FormatContext(#[cause] FormatErrorContext),
-        #[fail(display = "{}", _0)]
-        Io(#[cause] io::Error)
+        FormatContext(#[cause] Context<FormatErrorContext>),
+        Io(#[cause] io::Error),
+    }
+
+    impl fmt::Display for CommitValidationError {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            use CommitValidationError::*;
+            match self {
+                Format(e) => e.fmt(f),
+                FormatContext(c) => {
+                    if let Some(cause) = c.cause() {
+                        write!(f, "{}\n{}", cause, c)
+                    } else {
+                        c.fmt(f)
+                    }
+                }
+                Io(e) => e.fmt(f),
+            }
+        }
     }
 
     impl From<io::Error> for CommitValidationError {
@@ -36,15 +53,15 @@ pub mod errors {
         }
     }
 
-    impl From<FormatErrorContext> for CommitValidationError {
-        fn from(error: FormatErrorContext) -> Self {
+    impl From<Context<FormatErrorContext>> for CommitValidationError {
+        fn from(error: Context<FormatErrorContext>) -> Self {
             CommitValidationError::FormatContext(error)
         }
     }
 
     #[derive(Copy, Clone, Eq, PartialEq, Debug, Fail)]
     pub enum FormatError {
-        #[fail(display = "First letter must no be capitalized")]
+        #[fail(display = "First letter must not be capitalized")]
         CapitalizedFirstLetter,
         #[fail(display = "Empty commit subject")]
         EmptyCommitSubject,
@@ -64,29 +81,24 @@ pub mod errors {
         NonEmptySecondLine,
     }
 
-    impl FormatError {
-        pub fn with_format_context(self, line: &str, line_nb: usize, pos: usize) -> FormatErrorContext {
-            FormatErrorContext{
-                error: self,
-                line: line.to_string(),
-                line_nb,
-                pos
+    #[derive(Debug)]
+    pub struct FormatErrorContext {
+        line: String,
+        pos: usize,
+    }
+
+    impl FormatErrorContext {
+        pub fn new(line: &str, pos: usize) -> FormatErrorContext {
+            FormatErrorContext {
+                line: line.to_owned(),
+                pos,
             }
         }
     }
 
-    #[derive(Debug, Fail)]
-    pub struct FormatErrorContext {
-        #[cause]
-        pub error: FormatError,
-        pub line: String,
-        pub line_nb: usize,
-        pub pos: usize,
-    }
-
     impl fmt::Display for FormatErrorContext {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                write!(f, "line {}: {}\n{}\n{: >4$}", self.line_nb, self.error, self.line, '^', self.pos)
+            write!(f, "{}\n{: >2$}", self.line, '^', self.pos)
         }
     }
 }
@@ -168,9 +180,11 @@ pub fn validate_commit_message(input: &str) -> Result<()> {
 
     let message = parse_commit_message(input)?;
 
-    for (idx, line) in lines.iter().enumerate() {
+    for line in &lines {
         if line.len() > 100 {
-            return Err(FormatError::LineTooLong(100).with_format_context(line, idx, 100).into());
+            return Err(FormatError::LineTooLong(100)
+                .context(FormatErrorContext::new(line, 100))
+                .into());
         }
     }
 
@@ -183,9 +197,11 @@ pub fn validate_commit_message(input: &str) -> Result<()> {
         .unwrap()
         .is_uppercase()
     {
-        return Err(FormatError::CapitalizedFirstLetter.with_format_context(lines[0], 0, Into::<&'static str>::into(message.header.commit_type).len()
-            + message.header.scope.map_or(0, |s| s.len() + 2)
-            + 2).into());
+        let pos = Into::<&'static str>::into(message.header.commit_type).len()
+            + message.header.scope.map_or(0, |s| s.len() + 2) + 3;
+        return Err(FormatError::CapitalizedFirstLetter
+            .context(FormatErrorContext::new(lines[0], pos))
+            .into());
     }
 
     Ok(())

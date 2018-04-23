@@ -1,13 +1,13 @@
-//use std::str::FromStr;
+use failure::Fail;
 
-use errors::{CommitValidationError, FormatError, Result};
+use errors::{CommitValidationError, FormatError, FormatErrorContext, Result};
 use {CommitHeader, CommitMsg, CommitType};
 
 pub fn parse_commit_message(message: &str) -> Result<CommitMsg> {
     let lines: Vec<_> = message.lines().collect();
 
     if lines.get(1).map_or(false, |l| !l.is_empty()) {
-        return Err(FormatError::NonEmptySecondLine.with_format_context(lines[1], 1, 0).into());
+        return Err(FormatError::NonEmptySecondLine.into());
     }
 
     Ok(CommitMsg {
@@ -24,13 +24,16 @@ fn parse_commit_header(line: &str) -> Result<CommitHeader> {
 
     let column_pos = line.find(':').ok_or(FormatError::NoColumn)?;
     let (commit_type, scope) = parse_commit_type_and_scope(&line[0..column_pos])?;
-    let commit_type: CommitType = commit_type.parse()
-        .map_err(|e: FormatError| e.with_format_context(line, 0, 0))?;
+    let commit_type: CommitType = commit_type
+        .parse()
+        .map_err(|e: FormatError| e.context(FormatErrorContext::new(line, 0)))?;
 
     match line.get(column_pos + 1..column_pos + 2) {
         Some(" ") => (),
         _ => {
-            return Err(FormatError::MisplacedWhitespace.with_format_context(line, 0, column_pos + 1).into())
+            return Err(FormatError::MisplacedWhitespace
+                .context(FormatErrorContext::new(line, column_pos + 1))
+                .into())
         }
     }
 
@@ -59,20 +62,25 @@ fn parse_commit_type_and_scope(commit_type_and_scope: &str) -> Result<(&str, Opt
 
     let first_char = commit_type_and_scope.chars().next().unwrap();
     if first_char.is_whitespace() {
-        return Err(FormatError::MisplacedWhitespace.with_format_context(commit_type_and_scope, 0, 0).into());
+        return Err(FormatError::MisplacedWhitespace
+            .context(FormatErrorContext::new(commit_type_and_scope, 0))
+            .into());
     }
 
     let last_char = commit_type_and_scope.chars().last().unwrap();
     if last_char.is_whitespace() {
         return Err(FormatError::MisplacedWhitespace
-            .with_format_context(commit_type_and_scope, 0, commit_type_and_scope.len() - 1)
+            .context(FormatErrorContext::new(
+                commit_type_and_scope,
+                commit_type_and_scope.len() - 1,
+            ))
             .into());
     }
 
     Ok(if last_char == ')' {
         let opening_parenthesis: usize = commit_type_and_scope
             .find('(')
-            .ok_or(CommitValidationError::from(FormatError::MissingParenthesis))?;
+            .ok_or_else(|| CommitValidationError::from(FormatError::MissingParenthesis))?;
         (
             &commit_type_and_scope[..opening_parenthesis],
             Some(&commit_type_and_scope[opening_parenthesis + 1..commit_type_and_scope.len() - 1]),
