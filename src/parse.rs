@@ -91,6 +91,7 @@ fn parse_commit_type_and_scope(
 mod tests {
     use super::parse_commit_message;
     use CommitType;
+    use errors::*;
 
     #[test]
     fn test_parse_header() {
@@ -107,24 +108,35 @@ mod tests {
 
     #[test]
     fn test_discard_invalid_commit_type() {
-        assert!(parse_commit_message("feet: add feeture").is_err());
+        let res = parse_commit_message("feet: add feeture");
+        assert!(res.is_err());
+        assert_eq!(FormatErrorKind::InvalidCommitType, res.unwrap_err().kind);
     }
 
     #[test]
     fn discard_not_trimmed_subject() {
         assert!(parse_commit_message("feat: add commit message validation ").is_err());
-        assert!(parse_commit_message("feat:  add commit message validation").is_err());
+        let res = parse_commit_message("feat:  add commit message validation");
+        assert!(res.is_err());
+        assert_eq!(FormatErrorKind::MisplacedWhitespace, res.unwrap_err().kind);
+    }
+
+    #[test]
+    fn discard_missing_whitespace() {
+        let res = parse_commit_message("feat:add commit message validation");
+        assert!(res.is_err());
+        assert_eq!(FormatErrorKind::MissingWhitespace, res.unwrap_err().kind);
     }
 
     #[test]
     fn test_second_line_empty() {
-        assert!(
-            parse_commit_message(
-                "feat: add commit message validation
+        let res = parse_commit_message(
+            "feat: add commit message validation
 - Validate commit type
-- Validate subject"
-            ).is_err()
+- Validate subject",
         );
+        assert!(res.is_err());
+        assert_eq!(FormatErrorKind::NonEmptySecondLine, res.unwrap_err().kind);
     }
 
     #[test]
