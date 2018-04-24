@@ -118,6 +118,8 @@ pub enum FormatErrorKind {
     LineTooLong(usize),
     #[fail(display = "Missing parenthesis")]
     MissingParenthesis,
+    #[fail(display = "Missing whitespace")]
+    MissingWhitespace,
     #[fail(display = "Misplaced whitespace")]
     MisplacedWhitespace,
     #[fail(display = "First line must contain a column")]

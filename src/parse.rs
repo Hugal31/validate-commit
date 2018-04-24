@@ -14,19 +14,14 @@ pub fn parse_commit_message(message: &str) -> Result<CommitMsg, FormatError> {
 }
 
 fn parse_commit_header(line: &str) -> Result<CommitHeader, FormatError> {
-    let line = if line.starts_with("fixup! ") || line.starts_with("squash! ") {
-        &line[line.find(' ').unwrap() + 1..]
-    } else {
-        line
-    };
+    let line = discard_autosquash(line);
 
     let column_pos = line.find(':').ok_or(FormatErrorKind::NoColumn)?;
     let (commit_type, scope) = parse_commit_type_and_scope(&line[0..column_pos])?;
     let commit_type: CommitType = commit_type.parse().map_err(|e: FormatError| e.at(line, 0))?;
 
-    match line.get(column_pos + 1..column_pos + 2) {
-        Some(" ") => (),
-        _ => return Err(FormatErrorKind::MisplacedWhitespace.at(line, column_pos + 1)),
+    if line.get(column_pos + 1..column_pos + 2) != Some(" ") {
+        return Err(FormatErrorKind::MissingWhitespace.at(line, column_pos + 1));
     }
 
     let subject_pos = column_pos + 2;
@@ -35,8 +30,7 @@ fn parse_commit_header(line: &str) -> Result<CommitHeader, FormatError> {
         return Err(FormatErrorKind::EmptyCommitSubject.into());
     }
 
-    // Check if the subject is trimmed
-    if subject != subject.trim() {
+    if !is_trimmed(subject) {
         return Err(FormatErrorKind::MisplacedWhitespace.into());
     }
 
@@ -45,6 +39,21 @@ fn parse_commit_header(line: &str) -> Result<CommitHeader, FormatError> {
         scope,
         subject,
     })
+}
+
+/// Return the string whitout `squash! ` or `fixup! `
+fn discard_autosquash(line: &str) -> &str {
+    if line.starts_with("fixup! ") {
+        &line[7..]
+    } else if line.starts_with("squash! ") {
+        &line[8..]
+    } else {
+        line
+    }
+}
+
+fn is_trimmed(s: &str) -> bool {
+    s == s.trim()
 }
 
 fn parse_commit_type_and_scope(

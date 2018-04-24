@@ -111,8 +111,7 @@ pub fn validate_commit_message(input: &str) -> Result<(), FormatError> {
         .unwrap()
         .is_uppercase()
     {
-        let pos = Into::<&'static str>::into(message.header.commit_type).len()
-            + message.header.scope.map_or(0, |s| s.len() + 2) + 3;
+        let pos = lines[0].find(message.header.subject).unwrap();
         return Err(FormatErrorKind::CapitalizedFirstLetter.at(lines[0], pos));
     }
 
