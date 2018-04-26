@@ -92,7 +92,9 @@ pub fn validate_commit_message(input: &str) -> Result<(), FormatError> {
         return Ok(());
     }
 
-    let lines: Vec<_> = input.lines().collect();
+    let lines: Vec<_> = input.lines()
+        .filter(|l| !l.starts_with('#'))
+        .collect();
 
     let message = parse_commit_message(input)?;
 
