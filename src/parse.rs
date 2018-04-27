@@ -30,8 +30,12 @@ fn parse_commit_header(line: &str) -> Result<CommitHeader, FormatError> {
         return Err(FormatErrorKind::EmptyCommitSubject.into());
     }
 
-    if !is_trimmed(subject) {
-        return Err(FormatErrorKind::MisplacedWhitespace.into());
+    if !is_left_trimmed(subject) {
+        return Err(FormatErrorKind::MisplacedWhitespace.at(line, subject_pos + 1));
+    }
+
+    if !is_right_trimmed(subject) {
+        return Err(FormatErrorKind::MisplacedWhitespace.at(line, line.len()));
     }
 
     Ok(CommitHeader {
@@ -52,8 +56,12 @@ fn discard_autosquash(line: &str) -> &str {
     }
 }
 
-fn is_trimmed(s: &str) -> bool {
-    s == s.trim()
+fn is_left_trimmed(s: &str) -> bool {
+    s == s.trim_left()
+}
+
+fn is_right_trimmed(s: &str) -> bool {
+    s == s.trim_right()
 }
 
 fn parse_commit_type_and_scope(
