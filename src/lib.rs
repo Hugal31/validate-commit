@@ -13,18 +13,27 @@ use parse::parse_commit_message;
 
 pub use errors::*;
 
+/// Represent a commit message
+///
+/// For now, only contains the header.
 #[derive(Debug, PartialEq)]
 pub struct CommitMsg<'a> {
+    /// Commit header
     pub header: CommitHeader<'a>,
 }
 
+/// Represent a commit header
 #[derive(Debug, PartialEq)]
 pub struct CommitHeader<'a> {
+    /// Type of the commit
     pub commit_type: CommitType,
+    /// Scope of the commit, if provided
     pub scope: Option<&'a str>,
+    /// Subject of the commit
     pub subject: &'a str,
 }
 
+/// Type of a commit
 #[derive(Debug, PartialEq)]
 pub enum CommitType {
     Feat,
@@ -74,6 +83,9 @@ impl FromStr for CommitType {
     }
 }
 
+/// Read a commit file to validate it.
+///
+/// See [`validate_commit_message`] for more details about validation.
 pub fn validate_commit_file(path: &str) -> Result<(), CommitValidationError> {
     let message = read_commit_file(path)?;
     validate_commit_message(&message).map_err(|e| e.into())
@@ -87,6 +99,26 @@ fn read_commit_file(path: &str) -> Result<String, IOError> {
     Ok(message)
 }
 
+/// Validate a commit message.
+///
+/// For now, only validate the header, which contains the commit type, the subject
+/// and an optional scope.
+///
+/// Ignore lines starting with '#'.
+///
+/// Validate the whole message if the first line starts with "Merge " or "WIP".
+///
+/// # Examples
+///
+/// Validating commit messages:
+/// ```
+/// # use validate_commit::validate_commit_message;
+/// assert!(validate_commit_message("feat(lib): add commit validation").is_ok());
+/// assert!(validate_commit_message("# A comment in a COMMIT_EDITMSG file
+/// feat: add commit validation").is_ok());
+/// assert!(validate_commit_message("WIP: feat: add commit validation").is_ok());
+/// assert!(validate_commit_message("Merge branch 'develop'").is_ok());
+/// ```
 pub fn validate_commit_message(input: &str) -> Result<(), FormatError> {
     let lines: Vec<_> = input.lines()
         .filter(|l| !l.starts_with('#'))
