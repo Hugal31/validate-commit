@@ -1,9 +1,7 @@
 use errors::{FormatError, FormatErrorKind};
 use {CommitHeader, CommitMsg, CommitType};
 
-pub fn parse_commit_message(message: &str) -> Result<CommitMsg, FormatError> {
-    let lines: Vec<_> = message.lines().collect();
-
+pub fn parse_commit_message<'a>(lines: &[&'a str]) -> Result<CommitMsg<'a>, FormatError> {
     if lines.get(1).map_or(false, |l| !l.is_empty()) {
         return Err(FormatErrorKind::NonEmptySecondLine.into());
     }
@@ -103,9 +101,9 @@ mod tests {
 
     #[test]
     fn test_parse_header() {
-        assert!(parse_commit_message("refactor: add commit parsing").is_ok());
+        assert!(parse_commit_message(&["refactor: add commit parsing"]).is_ok());
 
-        let commit_msg = parse_commit_message("refactor(scope): add commit parsing");
+        let commit_msg = parse_commit_message(&["refactor(scope): add commit parsing"]);
         assert!(commit_msg.is_ok());
 
         let commit_msg = commit_msg.unwrap();
@@ -116,40 +114,40 @@ mod tests {
 
     #[test]
     fn test_discard_invalid_commit_type() {
-        let res = parse_commit_message("feet: add feeture");
+        let res = parse_commit_message(&["feet: add feeture"]);
         assert!(res.is_err());
         assert_eq!(FormatErrorKind::InvalidCommitType, res.unwrap_err().kind);
     }
 
     #[test]
     fn discard_not_trimmed_subject() {
-        assert!(parse_commit_message("feat: add commit message validation ").is_err());
-        let res = parse_commit_message("feat:  add commit message validation");
+        assert!(parse_commit_message(&["feat: add commit message validation "]).is_err());
+        let res = parse_commit_message(&["feat:  add commit message validation"]);
         assert!(res.is_err());
         assert_eq!(FormatErrorKind::MisplacedWhitespace, res.unwrap_err().kind);
     }
 
     #[test]
     fn discard_missing_whitespace() {
-        let res = parse_commit_message("feat:add commit message validation");
+        let res = parse_commit_message(&["feat:add commit message validation"]);
         assert!(res.is_err());
         assert_eq!(FormatErrorKind::MissingWhitespace, res.unwrap_err().kind);
     }
 
     #[test]
     fn test_second_line_empty() {
-        let res = parse_commit_message(
-            "feat: add commit message validation
-- Validate commit type
-- Validate subject",
-        );
+        let res = parse_commit_message(&[
+            "feat: add commit message validation",
+"- Validate commit type",
+"- Validate subject",
+        ]);
         assert!(res.is_err());
         assert_eq!(FormatErrorKind::NonEmptySecondLine, res.unwrap_err().kind);
     }
 
     #[test]
     fn test_fixup_or_squash() {
-        assert!(parse_commit_message("fixup! feat: add commit message validation").is_ok());
-        assert!(parse_commit_message("squash! feat: add commit message validation").is_ok());
+        assert!(parse_commit_message(&["fixup! feat: add commit message validation"]).is_ok());
+        assert!(parse_commit_message(&["squash! feat: add commit message validation"]).is_ok());
     }
 }

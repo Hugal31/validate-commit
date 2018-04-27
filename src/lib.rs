@@ -88,15 +88,15 @@ fn read_commit_file(path: &str) -> Result<String, IOError> {
 }
 
 pub fn validate_commit_message(input: &str) -> Result<(), FormatError> {
-    if input.starts_with("Merge ") || input.starts_with("WIP") {
-        return Ok(());
-    }
-
     let lines: Vec<_> = input.lines()
         .filter(|l| !l.starts_with('#'))
         .collect();
 
-    let message = parse_commit_message(input)?;
+    if lines[0].starts_with("Merge ") || lines[0].starts_with("WIP") {
+        return Ok(());
+    }
+
+    let message = parse_commit_message(&lines)?;
 
     for line in &lines {
         if line.len() > 100 {
